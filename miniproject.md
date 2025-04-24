@@ -1,3 +1,248 @@
+# miniproject_final
+```asm
+LIST P=18F4520
+#include <P18F4520.INC>
+CONFIG OSC = XT    
+CONFIG WDT = OFF   
+CONFIG LVP = OFF  
+CBLOCK 0x20
+digit0      
+digit1       
+digit2       
+digit3 
+countL       
+countH      
+inputL       
+inputH       
+int0_flag
+temp1
+temp2
+input       
+cycle_num
+Result
+n
+n0
+ENDC
+
+ORG 0x0000
+    GOTO MAIN
+
+ORG 0x0008
+    BTFSC INTCON, INT0IF
+    CALL INT0_ISR
+    RETFIE
+
+ORG 0x0100
+MAIN:
+    MOVLW 0x0F          
+    MOVWF ADCON1
+    CLRF TRISD        
+    CLRF PORTD          
+    CLRF TRISC            
+    CLRF PORTC            
+    SETF TRISB       
+    CLRF countL       
+    CLRF countH
+    BCF INTCON, INT0IF
+    BSF INTCON, INT0IE
+    BCF INTCON2, INTEDG0
+    BCF INTCON3,INT1IF
+    BSF INTCON3,INT1IE
+    BCF INTCON2,INTEDG1
+    BCF INTCON3,INT2IF
+    BSF INTCON3,INT2IE
+    BCF INTCON2,INTEDG2
+    BSF INTCON, GIE     
+
+LOOP:
+    MOVFF countL, inputL
+    MOVFF countH, inputH
+    CALL bin_to_bcd     
+    CALL scan_display   
+    GOTO LOOP
+
+INT0_ISR:
+    movlw 0x01
+    addwf countL, F
+    BTFSC STATUS, C
+    addwf countH, F
+    movlw 0x01
+    movwf int0_flag
+    BCF INTCON, INT0IF
+    RETURN
+
+INT1_ISR:
+    MOVLW 7         
+    SUBWF countL, W  
+    BTFSS STATUS, Z  
+    GOTO  calc_factorial
+    GOTO  Else
+calc_factorial:
+    MOVLW 1      
+    MOVWF inputL     
+    MOVLW 0        
+    MOVWF inputH    
+    MOVFF countL, n 
+    MOVF  n, W      
+    BEQ Done  
+
+FactorialLoop:
+    MOVF n, W       ; 将 n 的值加载到 WREG
+    MOVWF n0        ; 备份 n
+    MOVF Result, W  ; 将当前结果加载到 WREG
+    MULWF n0, W     ; 计算结果 * n
+    MOVWF Result    ; 将新结果存储回 Result
+    DECFSZ n, F     ; n = n - 1
+    GOTO FactorialLoop
+
+Done:
+    CALL bin_to_bcd     
+    CALL scan_display   
+
+Else:
+    NOP
+
+INT2_ISR:
+    clrf countL
+    clrf countH
+    clrf digit0
+    clrf digit1
+    clrf digit2
+    clrf digit3
+    clrf int0_flag
+    BCF INTCON3, INT2IF
+    RETURN
+
+delay:
+    MOVLW D'1000'
+    MOVWF temp1
+delay_outer:
+    MOVLW D'200'
+    MOVWF temp2
+delay_inner:
+    NOP
+    NOP
+    DECFSZ temp2, F
+    GOTO delay_inner
+    DECFSZ temp1, F
+    GOTO delay_outer
+    RETURN
+
+bcd_7seg: 
+    movlw low bcd_table
+    movwf TBLPTRL
+    movlw high bcd_table
+    movwf TBLPTRH
+    movlw upper bcd_table
+    movwf TBLPTRU
+    movf  input, W
+    addwf TBLPTRL, F
+    movlw 0
+    addwfc TBLPTRH
+    addwfc TBLPTRU
+    tblrd*
+    movf TABLAT, W
+    return
+
+bcd_table:
+    db 0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F
+
+
+bin_to_bcd:   ; Double Dabble Algorithm (Shift-and-Add-3)
+    clrf    digit0
+    clrf    digit1
+    clrf    digit2
+    clrf    digit3
+    movlw   .16
+    movwf   cycle_num
+
+convert_loop:
+    movf    digit0, w
+    sublw   .5  
+    BTFSS   STATUS,Z
+    goto    noadd0
+    movlw   .3
+    addwf   digit0, F
+noadd0:
+    movf    digit1, w
+    sublw   .5  
+    BTFSS   STATUS,Z
+    goto    noadd1
+    movlw   .3
+    addwf   digit1, F
+noadd1:
+    movf    digit2, w
+    sublw   .5  
+    BTFSS   STATUS,Z
+    goto    noadd2
+    movlw   .3
+    addwf   digit2, F
+noadd2:
+    movf    digit3, w
+    sublw   .5  
+    BTFSS   STATUS,Z
+    goto    noadd3
+    movlw   .3
+    addwf   digit3, F
+noadd3:
+    rlcf     inputL, F
+    rlcf     inputH, F
+    rlcf     digit0, F
+    rlcf     digit1, F
+    rlcf     digit2, F
+    rlcf     digit3, F
+    decfsz  cycle_num, F
+    goto    convert_loop
+    return
+
+
+scan_display:
+    movf    digit0, W
+    movwf   input
+    call    bcd_7seg
+    movwf   PORTD
+    movlw   0x00
+    movwf   PORTC
+    call    delay_display
+
+    movf    digit1, W
+    movwf   input
+    call    bcd_7seg
+    movwf   PORTD
+    movlw   0x01
+    movwf   PORTC
+    call    delay_display
+
+    movf    digit2, W
+    movwf   input
+    call    bcd_7seg
+    movwf   PORTD
+    movlw   0x02
+    movwf   PORTC
+    call    delay_display
+
+    movf    digit3, W
+    movwf   input
+    call    bcd_7seg
+    movwf   PORTD
+    movlw   0x03
+    movwf   PORTC
+    call    delay_display
+    return
+
+delay_display:
+    movlw   D'50'
+    movwf   temp1
+wait_loop:
+    nop
+    nop
+    decfsz  temp1, F
+    goto    wait_loop
+    return
+
+    END
+```
+
 # Asg 6 INT example
 
 当然可以！你这段代码是写给 **PIC18F4520** 单片机的汇编程序。它的主要功能是：
